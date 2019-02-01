@@ -111,7 +111,7 @@ public class BDI_Donations {
             if (dataImportFieldToOpportunityField == null) {
                 dataImportFieldToOpportunityField = BDI_DataImportService.mapFieldsForDIObject(
                     'Opportunity', 'Opportunity',
-                    BDI_DataImportService.listStrDataImportFields
+                    BDI_DataImportService.dataImportFields
                 );
             }
             return dataImportFieldToOpportunityField;
@@ -127,7 +127,7 @@ public class BDI_Donations {
             if (dataImportFieldToPaymentField == null) {
                 dataImportFieldToPaymentField = BDI_DataImportService.mapFieldsForDIObject(
                     'Payment', 'npe01__OppPayment__c',
-                    BDI_DataImportService.listStrDataImportFields);
+                    BDI_DataImportService.dataImportFields);
             }
             return dataImportFieldToPaymentField;
         }
@@ -398,7 +398,7 @@ public class BDI_Donations {
         }
 
         if (dataImport.Donation_Campaign_Name__c != null) {
-            Id campaignId = bdi.mapStrNameToCampaignId.get(dataImport.Donation_Campaign_Name__c);
+            Id campaignId = bdi.campaignIdsByCampaignName.get(dataImport.Donation_Campaign_Name__c);
             if (campaignId == null) {
                 bdi.LogBDIError(dataImport, System.Label.bdiErrorInvalidCampaignName, 'DonationImportStatus__c');
                 return null;
@@ -465,7 +465,7 @@ public class BDI_Donations {
             if (dataImportField == 'CurrencyIsoCode' && useCustomMappingInsteadOfCurrencyIsoCode) {
                 continue;
             }
-            BDI_DataImportService.isCopiedDIField(dataImport, dataImportField, opp, dataImportFieldToOpportunityField);
+            BDI_DataImportService.isCopiedField(dataImport, dataImportField, opp, dataImportFieldToOpportunityField);
         }
 
         // the Opp is ready!
@@ -623,7 +623,7 @@ public class BDI_Donations {
                 if (payment != null) {
                     Integer numberOfCopiedFields = 0;
                     for (String dataImportField : dataImportFieldToPaymentField.keySet()) {
-                        if (BDI_DataImportService.isCopiedDIField(dataImport, dataImportField, payment, dataImportFieldToPaymentField)) {
+                        if (BDI_DataImportService.isCopiedField(dataImport, dataImportField, payment, dataImportFieldToPaymentField)) {
                             numberOfCopiedFields++;
                         }
                     }

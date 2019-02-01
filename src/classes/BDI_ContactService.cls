@@ -72,7 +72,7 @@ public with sharing class BDI_ContactService {
     private Map<String, String> mapDIFieldToC1Field {
         get {
             if (mapDIFieldToC1Field == null) {
-                mapDIFieldToC1Field = BDI_DataImportService.mapFieldsForDIObject('Contact1', 'Contact', BDI_DataImportService.listStrDataImportFields);
+                mapDIFieldToC1Field = BDI_DataImportService.mapFieldsForDIObject('Contact1', 'Contact', BDI_DataImportService.dataImportFields);
             }
             return mapDIFieldToC1Field;
         }
@@ -85,7 +85,7 @@ public with sharing class BDI_ContactService {
     private Map<String, String> mapDIFieldToC2Field {
         get {
             if (mapDIFieldToC2Field == null) {
-                mapDIFieldToC2Field = BDI_DataImportService.mapFieldsForDIObject('Contact2', 'Contact', BDI_DataImportService.listStrDataImportFields);
+                mapDIFieldToC2Field = BDI_DataImportService.mapFieldsForDIObject('Contact2', 'Contact', BDI_DataImportService.dataImportFields);
             }
             return mapDIFieldToC2Field;
         }
@@ -202,7 +202,7 @@ public with sharing class BDI_ContactService {
             // copy over all fields with data
             Map<String, String> mapDIFieldToConField = (strCx == 'Contact1') ? mapDIFieldToC1Field : mapDIFieldToC2Field;
             for (String strDIField : mapDIFieldToConField.keySet()) {
-                if (BDI_DataImportService.isCopiedDIField(di, strDIField, con, mapDIFieldToConField)) {
+                if (BDI_DataImportService.isCopiedField(di, strDIField, con, mapDIFieldToConField)) {
                     isModified = true;
                 }
             }

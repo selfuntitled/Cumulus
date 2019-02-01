@@ -83,7 +83,7 @@ global with sharing class BDI_DataImportService {
         if (dataImportBatches.size() == 1) {
             return dataImportBatches[0];
         } else {
-            throw(new BDIException(String.format(Label.bdiInvalidBatchId, new List<String>{ batchId })));
+            throw(new BDIException(String.format(System.Label.bdiInvalidBatchId, new List<String>{ batchId })));
         }
     }
 
@@ -99,7 +99,7 @@ global with sharing class BDI_DataImportService {
         if (batchId == null) {
             return UTIL_CustomSettingsFacade.getDataImportSettings();
         } else {
-            return diSettingsFromDiBatch(loadBatch(batchId));
+            return getSettings(loadBatch(batchId));
         }
     }
 
@@ -108,7 +108,7 @@ global with sharing class BDI_DataImportService {
     * @param diBatch the batch to copy fields from
     * @return Data_Import_Settings__c
     */
-    public static Data_Import_Settings__c diSettingsFromDiBatch(DataImportBatch__c dataImportBatch) {
+    public static Data_Import_Settings__c getSettings(DataImportBatch__c dataImportBatch) {
         return new Data_Import_Settings__c(
             Account_Custom_Unique_ID__c = dataImportBatch.Account_Custom_Unique_ID__c,
             Batch_Size__c = dataImportBatch.Batch_Process_Size__c,
@@ -128,7 +128,7 @@ global with sharing class BDI_DataImportService {
     * @param diSettings the settings to copy fields from
     * @return DataImportBatch__c
     */
-    public static DataImportBatch__c diBatchFromDiSettings(Data_Import_Settings__c dataImportSettings) {
+    public static DataImportBatch__c getSettings(Data_Import_Settings__c dataImportSettings) {
         return new DataImportBatch__c(
             Account_Custom_Unique_ID__c = dataImportSettings.Account_Custom_Unique_ID__c,
             Batch_Process_Size__c = dataImportSettings.Batch_Size__c,
@@ -155,7 +155,7 @@ global with sharing class BDI_DataImportService {
             throw(new BDIException(Label.bdiErrorBatchNameRequired));
         }
         // defer all other validation to the actual settings
-        validateSettings(diSettingsFromDiBatch(dataImportBatch));
+        validateSettings(getSettings(dataImportBatch));
     }
 
     /*******************************************************************************************************
@@ -286,9 +286,9 @@ global with sharing class BDI_DataImportService {
     * all are indexed by the object's matching key or the dataImport.Id
     */
     //public Map<String, Contact> mapDIKeyToContact = new Map<String, Contact>();
-    public Map<String, Account> mapDIKeyToAccount = new Map<String, Account>();
-    private Map<Id, Address__c> mapDIIdToAddr = new Map<Id, Address__c>();
-    public Map<String, Id> mapStrNameToCampaignId = new Map<String, Id>();
+    public Map<String, Account> accountsByDataImportKey = new Map<String, Account>();
+    private Map<Id, Address__c> addressesByDataImportId = new Map<Id, Address__c>();
+    public Map<String, Id> campaignIdsByCampaignName = new Map<String, Id>();
 
     /*******************************************************************************************************
     * @description holds the list of DataImport records we are currently processing
@@ -321,12 +321,12 @@ global with sharing class BDI_DataImportService {
     */
     private Boolean isCustomIdInAccountMatchRules {
         get {
-            String str = diSettings.Account_Custom_Unique_ID__c;
-            if (str == null || str == '') {
+            if (String.isBlank(diSettings.Account_Custom_Unique_ID__c)) {
                 return false;
             }
             return true;
-        } private set;
+        }
+        private set;
     }
 
     /*******************************************************************************************************
@@ -337,16 +337,16 @@ global with sharing class BDI_DataImportService {
             if (isCustomIdInAccountDatatypeString == null) {
                 isCustomIdInAccountDatatypeString = false;
                 if (isCustomIdInAccountMatchRules) {
-                    Schema.DisplayType dt = UTIL_Describe.getFieldDisplaytype(
+                    Schema.DisplayType displayType = UTIL_Describe.getFieldDisplaytype(
                         'Account', diSettings.Account_Custom_Unique_ID__c
                     );
 
-                    if (dt == Schema.DisplayType.String ||
-                        dt == Schema.DisplayType.TextArea ||
-                        dt == Schema.DisplayType.Id ||
-                        dt == Schema.DisplayType.URL ||
-                        dt == Schema.DisplayType.Phone ||
-                        dt == Schema.DisplayType.Reference) {
+                    if (displayType == Schema.DisplayType.String ||
+                        displayType == Schema.DisplayType.TextArea ||
+                        displayType == Schema.DisplayType.Id ||
+                        displayType == Schema.DisplayType.URL ||
+                        displayType == Schema.DisplayType.Phone ||
+                        displayType == Schema.DisplayType.Reference) {
                         isCustomIdInAccountDatatypeString = true;
                     }
 
@@ -676,16 +676,29 @@ global with sharing class BDI_DataImportService {
     /*******************************************************************************************************
     * @description list of all the fields in the Data Import object
     */
+    // Maintaining the original variable name because I'm not sure we can deprecate a global variable, but we still
+    // want to update references to match modern coding standards
     global static List<String> listStrDataImportFields {
         get {
-            if (listStrDataImportFields == null) {
-                Map<String, Schema.SObjectField> mapS = Schema.SObjectType.DataImport__c.fields.getMap();
-                listStrDataImportFields = new List<String>();
-                listStrDataImportFields.addAll(mapS.keySet());
-            }
-            return listStrDataImportFields;
+            return dataImportFields;
         }
-        set;
+        set {
+            // This 'set' seems like it should be private, but because it's been exposed globally we might break
+            // third-party logic if we remove it
+            dataImportFields = value;
+        }
+    }
+
+    public static List<String> dataImportFields {
+        get {
+            if (dataImportFields == null) {
+                Map<String, Schema.SObjectField> mapS = Schema.SObjectType.DataImport__c.fields.getMap();
+                dataImportFields = new List<String>();
+                dataImportFields.addAll(mapS.keySet());
+            }
+            return dataImportFields;
+        }
+        private set;
     }
 
     /*******************************************************************************************************
@@ -739,7 +752,8 @@ global with sharing class BDI_DataImportService {
     * @param dataImportFields the DataImport fields to consider
     * @return Map<String, String> a map of DataImport fields to underlying object fields (eg, Donation_Amount__c => Amount)
     */
-    global static Map<String, String> mapFieldsForDIObject(String dataImportObjectName, String targetObjectName, List<String> dataImportFields) {
+    global static Map<String, String> mapFieldsForDIObject(String dataImportObjectName, String targetObjectName,
+        List<String> dataImportFields) {
 
         Map<String, String> dataImportFieldToTargetField = new Map<String, String>();
 
@@ -816,7 +830,6 @@ global with sharing class BDI_DataImportService {
     * @return void.
     */
     private static void addCurrencyIsoCode(Map<String, String> fieldMap) {
-
         // handle multicurrency if it's enabled
         if (UserInfo.isMultiCurrencyOrganization()) {
             fieldMap.put('currencyisocode', 'CurrencyIsoCode');
@@ -829,17 +842,17 @@ global with sharing class BDI_DataImportService {
     * @param dataImport The DataImport record
     * @param dataImportField The DI field to copy from
     * @param objDst The object to copy to
-    * @param mapDIFieldToDstField The field map from a DI field to the destination field
+    * @param dataImportFieldToTargetField The field map from a DI field to the destination field
     * @return boolean True if copied, False is not copied.
     */
-    public static Boolean isCopiedDIField(DataImport__c dataImport, String dataImportField, SObject destinationRecord,
-        Map<String, String> mapDIFieldToDstField) {
+    public static Boolean isCopiedField(DataImport__c dataImport, String dataImportField, SObject destinationRecord,
+        Map<String, String> dataImportFieldToTargetField) {
 
         Object value = dataImport.get(dataImportField);
 
         // explicitly avoid updating unchecked booleans (since we can't tell the difference between null and false)
         if (value != null && value != false) {
-            String destinationField = mapDIFieldToDstField.get(dataImportField);
+            String destinationField = dataImportFieldToTargetField.get(dataImportField);
 
             // if values haven't changed, don't copy it and say the object was modified!
             if (destinationRecord.get(destinationField) == value) {
@@ -878,17 +891,17 @@ global with sharing class BDI_DataImportService {
         }
 
         // get our mapping of household custom fields
-        Map<String, String> mapDIFieldToHHField = mapFieldsForDIObject('Household', 'Account', listStrDataImportFields);
+        Map<String, String> dataImportFieldToHouseholdField = mapFieldsForDIObject('Household', 'Account', dataImportFields);
 
         // bail out if no custom fields
-        if (mapDIFieldToHHField.size() == 0) {
+        if (dataImportFieldToHouseholdField.size() == 0) {
             return;
         }
 
         // holds the Households that need updating
         List<Account> householdsToUpdate = new List<Account>();
-        Set<Id> setHHIdUpdate = new Set<Id>();
-        List<DataImport__c> listDIUpdate = new List<DataImport__c>();
+        Set<Id> householdIdsToUpdate = new Set<Id>();
+        List<DataImport__c> dataImportsToUpdate = new List<DataImport__c>();
 
         for (DataImport__c dataImport : listDI) {
             // skip di's that already have an error
@@ -902,15 +915,15 @@ global with sharing class BDI_DataImportService {
 
             Boolean isModified = false;
             Account household = new Account(Id = dataImport.HouseholdAccountImported__c);
-            for (String dataImportField : mapDIFieldToHHField.keySet()) {
-                if (isCopiedDIField(dataImport, dataImportField, household, mapDIFieldToHHField)) {
+            for (String dataImportField : dataImportFieldToHouseholdField.keySet()) {
+                if (isCopiedField(dataImport, dataImportField, household, dataImportFieldToHouseholdField)) {
                     isModified = true;
                 }
             }
 
-            if (isModified && setHHIdUpdate.add(household.Id)) {
+            if (isModified && householdIdsToUpdate.add(household.Id)) {
                 householdsToUpdate.add(household);
-                listDIUpdate.add(dataImport);
+                dataImportsToUpdate.add(dataImport);
             }
 
         }
@@ -920,7 +933,7 @@ global with sharing class BDI_DataImportService {
         for (Integer i = 0; i < listUR.size(); i++) {
             Database.UpsertResult ur = listUR[i];
             if (!ur.isSuccess()) {
-                LogBDIError(listDIUpdate[i], ur.getErrors()[0].getMessage(), null);
+                LogBDIError(dataImportsToUpdate[i], ur.getErrors()[0].getMessage(), null);
             }
         }
     }
@@ -1037,8 +1050,8 @@ global with sharing class BDI_DataImportService {
             }
 
             Boolean isModified = false;
-            for (String strDIField : mapDIFieldToA1Field.keySet()) {
-                if (isCopiedDIField(dataImport, strDIField, acc, mapDIFieldToA1Field)) {
+            for (String strDIField : dataImportFieldToAccount1Field.keySet()) {
+                if (isCopiedField(dataImport, strDIField, acc, dataImportFieldToAccount1Field)) {
                     isModified = true;
                 }
             }
@@ -1108,8 +1121,8 @@ global with sharing class BDI_DataImportService {
             }
 
             Boolean isModified = false;
-            for (String strDIField : mapDIFieldToA2Field.keySet()) {
-                if (isCopiedDIField(dataImport, strDIField, acc, mapDIFieldToA2Field)) {
+            for (String strDIField : dataImportFieldToAccount2Field.keySet()) {
+                if (isCopiedField(dataImport, strDIField, acc, dataImportFieldToAccount2Field)) {
                     isModified = true;
                 }
             }
@@ -1275,7 +1288,7 @@ global with sharing class BDI_DataImportService {
     */
     global Account AccountFromDi(DataImport__c dataImport, Integer iAcc) {
         for (String diKey : listDiKeyAx(dataImport, iAcc == 1 ? 'Account1' : 'Account2')) {
-            Account acc = mapDIKeyToAccount.get(diKey);
+            Account acc = accountsByDataImportKey.get(diKey);
             if (acc != null) {
                 return acc;
             }
@@ -1371,7 +1384,7 @@ global with sharing class BDI_DataImportService {
         // put all Accounts into our map
         for (Account acc : listAcc) {
             for (String diKey : listDiKeyAccount(acc)) {
-                mapDIKeyToAccount.put(dikey, acc);
+                accountsByDataImportKey.put(dikey, acc);
             }
         }
 
@@ -1392,7 +1405,7 @@ global with sharing class BDI_DataImportService {
             }
             // make sure all dikeys for that account are in the map
             for (String diKey : listDiKey) {
-                mapDIKeyToAccount.put(diKey, acc);
+                accountsByDataImportKey.put(diKey, acc);
             }
 
             acc = AccountFromDi(dataImport, 2);
@@ -1406,7 +1419,7 @@ global with sharing class BDI_DataImportService {
             }
             // make sure all dikeys for that account are in the map
             for (String diKey : listDiKey) {
-                mapDIKeyToAccount.put(diKey, acc);
+                accountsByDataImportKey.put(diKey, acc);
             }
         }
     }
@@ -1416,23 +1429,21 @@ global with sharing class BDI_DataImportService {
     * @return String the soql ('SELECT ... FROM Account')
     */
     private String getSoqlSelectForAccount() {
-        Set<String> setAccountFields = new Set<String> {'Id', 'Name'};
-            setAccountFields.addAll(mapDIFieldToA1Field.values());
-            setAccountFields.addAll(mapDIFieldToA2Field.values());
-        return 'SELECT ' + String.join(new List<String>(setAccountFields), ',') + ' FROM Account ';
+        Set<String> accountFields = new Set<String> {'Id', 'Name'};
+            accountFields.addAll(dataImportFieldToAccount1Field.values());
+            accountFields.addAll(dataImportFieldToAccount2Field.values());
+        return 'SELECT ' + String.join(new List<String>(accountFields), ',') + ' FROM Account ';
     }
 
     /*******************************************************************************************************
     * @description map of DI Fieldnames for Account1 to Account fieldnames
     */
-    private Map<String, String> mapDIFieldToA1Field {
+    private Map<String, String> dataImportFieldToAccount1Field {
         get {
-            if (mapDIFieldToA1Field == null) {
-                mapDIFieldToA1Field = BDI_DataImportService.mapFieldsForDIObject(
-                    'Account1', 'Account', BDI_DataImportService.listStrDataImportFields
-                );
+            if (dataImportFieldToAccount1Field == null) {
+                dataImportFieldToAccount1Field = mapFieldsForDIObject('Account1', 'Account', dataImportFields);
             }
-            return mapDIFieldToA1Field;
+            return dataImportFieldToAccount1Field;
         }
         set;
     }
@@ -1440,15 +1451,12 @@ global with sharing class BDI_DataImportService {
     /*******************************************************************************************************
     * @description map of DI Fieldnames for Account2 to Account fieldnames
     */
-    private Map<String, String> mapDIFieldToA2Field {
+    private Map<String, String> dataImportFieldToAccount2Field {
         get {
-            if (mapDIFieldToA2Field == null) {
-                mapDIFieldToA2Field =
-                    BDI_DataImportService.mapFieldsForDIObject(
-                        'Account2', 'Account', BDI_DataImportService.listStrDataImportFields
-                    );
+            if (dataImportFieldToAccount2Field == null) {
+                dataImportFieldToAccount2Field = mapFieldsForDIObject('Account2', 'Account', dataImportFields);
             }
-            return mapDIFieldToA2Field;
+            return dataImportFieldToAccount2Field;
         }
         set;
     }
@@ -1497,7 +1505,7 @@ global with sharing class BDI_DataImportService {
 
         Map<String, Id> mapHHAddrKeyToId = new Map<String, Id>();
         for (Address__c addr : listAddrExisting) {
-            mapHHAddrKeyToId.put(strKeyOfAddr(addr), addr.Id);
+            mapHHAddrKeyToId.put(buildKeyForAddress(addr), addr.Id);
         }
 
         Map<String, String> mapDIFieldToAddrField =
@@ -1518,7 +1526,7 @@ global with sharing class BDI_DataImportService {
             address.Household_Account__c = (con != null ? con.AccountId : null);
             Boolean isEmpty = true;
             for (String dataImportField : mapDIFieldToAddrField.keySet()) {
-                if (isCopiedDIField(dataImport, dataImportField, address, mapDIFieldToAddrField)) {
+                if (isCopiedField(dataImport, dataImportField, address, mapDIFieldToAddrField)) {
                     isEmpty = false;
                 }
             }
@@ -1530,23 +1538,23 @@ global with sharing class BDI_DataImportService {
                 }
 
                 // check to see if we already have this address in this hh.
-                Id addressId = mapHHAddrKeyToId.get(strKeyOfAddr(address));
+                Id addressId = mapHHAddrKeyToId.get(buildKeyForAddress(address));
                 if (addressId != null) {
                     dataImport.HomeAddressImported__c = addressId;
                     dataImport.HomeAddressImportStatus__c = statusMatchedExisting();
                 } else {
                     // see if we are already creating this new address
-                    Address__c addrNew = mapHHAddrKeyToAddrNew.get(strKeyOfAddr(address));
+                    Address__c addrNew = mapHHAddrKeyToAddrNew.get(buildKeyForAddress(address));
                     if (addrNew != null) {
                         address = addrNew;
                         dataImport.HomeAddressImportStatus__c = statusMatchedNew();
                     } else {
-                        mapHHAddrKeyToAddrNew.put(strKeyOfAddr(address), address);
+                        mapHHAddrKeyToAddrNew.put(buildKeyForAddress(address), address);
                         addressesToInsert.add(address);
                         dataImportsToInsert.add(dataImport);
                         dataImport.HomeAddressImportStatus__c = statusCreatedNew();
                     }
-                    mapDIIdToAddr.put(dataImport.Id, address);
+                    addressesByDataImportId.put(dataImport.Id, address);
                 }
             }
             if (Test.isRunningTest() && address.MailingCity__c != null && address.MailingCity__c.startsWith('FailTest')) {
@@ -1580,7 +1588,7 @@ global with sharing class BDI_DataImportService {
             }
 
             if (dataImport.HomeAddressImported__c == null) {
-                Address__c addr = mapDIIdToAddr.get(dataImport.Id);
+                Address__c addr = addressesByDataImportId.get(dataImport.Id);
                 if (addr != null && addr.Id != null) {
                     dataImport.HomeAddressImported__c = addr.Id;
                     dataImport.HomeAddressImportStatus__c = statusCreatedNew();
@@ -1594,7 +1602,7 @@ global with sharing class BDI_DataImportService {
     * @param addr the Address
     * @return String the key for the Address
     */
-    private static String strKeyOfAddr(Address__c addr) {
+    private static String buildKeyForAddress(Address__c addr) {
         return addr.Household_Account__c + addr.MailingStreet__c + addr.MailingCity__c + addr.MailingState__c +
             addr.MailingPostalCode__c;
     }
@@ -1747,7 +1755,7 @@ global with sharing class BDI_DataImportService {
 
         // add the existing campaigns to our map
         for (Campaign cmp : [SELECT Id, Name FROM Campaign WHERE Name IN :setStrCampaign]) {
-            mapStrNameToCampaignId.put(cmp.Name, cmp.Id);
+            campaignIdsByCampaignName.put(cmp.Name, cmp.Id);
         }
 
         // create any new campaigns
@@ -1763,7 +1771,7 @@ global with sharing class BDI_DataImportService {
             String strName = dataImport.Donation_Campaign_Name__c;
             Campaign cmp;
             if (strName != null && setStrCampaign.add(strName)) {
-                if (mapStrNameToCampaignId.get(strName) == null) {
+                if (campaignIdsByCampaignName.get(strName) == null) {
                     cmp = new Campaign(Name=strName, IsActive=true);
                     listCmpNew.add(cmp);
                     listDINew.add(dataImport);
@@ -1784,7 +1792,7 @@ global with sharing class BDI_DataImportService {
 
         // add the new campaigns to our map
         for (Campaign cmp : listCmpNew) {
-            mapStrNameToCampaignId.put(cmp.Name, cmp.Id);
+            campaignIdsByCampaignName.put(cmp.Name, cmp.Id);
         }
 
     }
@@ -1816,7 +1824,7 @@ global with sharing class BDI_DataImportService {
             // only create CMs here for rows that don't have an opportunity
             if (dataImport.Donation_Campaign_Name__c != null && dataImport.DonationImported__c == null) {
                 // assume errors would have already been thrown
-                Id idCmp = mapStrNameToCampaignId.get(dataImport.Donation_Campaign_Name__c);
+                Id idCmp = campaignIdsByCampaignName.get(dataImport.Donation_Campaign_Name__c);
                 String diStatus =
                     String.isBlank(dataImport.Campaign_Member_Status__c) ?
                         Label.campaignMemberStatusDefault : dataImport.Campaign_Member_Status__c;
