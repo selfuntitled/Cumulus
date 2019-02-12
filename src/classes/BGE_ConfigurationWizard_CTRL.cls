@@ -147,9 +147,9 @@ public with sharing class BGE_ConfigurationWizard_CTRL {
                 field.conditionallyRequired = true;
             }
 
-            String rawFieldType = dfr.getType().name().toLowerCase();
-            field.type = UTIL_LightningComponentSupport.getLightningDataType(rawFieldType);
-            if (rawFieldType == 'currency') {
+            String rawDataType = dfr.getType().name().toLowerCase();
+            field.type = UTIL_LightningComponentSupport.getLightningInputDataType(rawDataType);
+            if (rawDataType == 'currency') {
                 field.formatter = 'currency';
             }
 
@@ -256,7 +256,7 @@ public with sharing class BGE_ConfigurationWizard_CTRL {
         donationAmount.isActive = true;
         donationAmount.requiredInEntryForm = true;
         donationAmount.hide = false;
-        donationAmount.type = UTIL_LightningComponentSupport.getLightningDataType('number');
+        donationAmount.type = UTIL_LightningComponentSupport.getLightningInputDataType('number');
         donationAmount.formatter = 'currency';
         donationAmount.sortOrder = 0;
         donationAmount.alwaysRequired = true;
@@ -272,7 +272,7 @@ public with sharing class BGE_ConfigurationWizard_CTRL {
         donationDate.isActive = true;
         donationDate.requiredInEntryForm = true;
         donationDate.hide = false;
-        donationDate.type = UTIL_LightningComponentSupport.getLightningDataType('date');
+        donationDate.type = UTIL_LightningComponentSupport.getLightningInputDataType('date');
         donationDate.sortOrder = 1;
         donationDate.alwaysRequired = true;
         fields.add(donationDate);
@@ -287,7 +287,7 @@ public with sharing class BGE_ConfigurationWizard_CTRL {
         paymentMethod.isActive = true;
         paymentMethod.requiredInEntryForm = false;
         paymentMethod.hide = false;
-        paymentMethod.type = UTIL_LightningComponentSupport.getLightningDataType('string');
+        paymentMethod.type = UTIL_LightningComponentSupport.getLightningInputDataType('string');
         paymentMethod.options = BGE_BatchGiftEntry_UTIL.getPicklistOptions(paymentMethodApiName);
         paymentMethod.sortOrder = 2;
         fields.add(paymentMethod);
@@ -302,7 +302,7 @@ public with sharing class BGE_ConfigurationWizard_CTRL {
         checkNumber.isActive = true;
         checkNumber.requiredInEntryForm = false;
         checkNumber.hide = false;
-        checkNumber.type = UTIL_LightningComponentSupport.getLightningDataType('string');
+        checkNumber.type = UTIL_LightningComponentSupport.getLightningInputDataType('string');
         checkNumber.sortOrder = 3;
         fields.add(checkNumber);
 
