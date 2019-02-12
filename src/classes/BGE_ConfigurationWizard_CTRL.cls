@@ -115,41 +115,29 @@ public with sharing class BGE_ConfigurationWizard_CTRL {
 
         Set<String> allowedObjects = new Set<String>{
             'Opportunity',
-            'Payment'
+            'npe01__OppPayment__c'
         };
 
         List<DescribeFieldResult> dfrs = getRelevantFields(allowedObjects);
 
         for (DescribeFieldResult dfr : dfrs) {
 
-            String dataImportFieldMappedObject = BDI_DataImportService.getTargetObject(dfr.getName());
-
             BGEField field = new BGEField();
-
-            field.sObjectName = dataImportFieldMappedObject;
-
-            // this will require iteration if/when we allow objects beyond Opp and Payment
-            String translatedObjectLabel;
-            if (dataImportFieldMappedObject == 'Opportunity') {
-                translatedObjectLabel = UTIL_Describe.getObjectLabel(dataImportFieldMappedObject);
-            } else if (dataImportFieldMappedObject == 'Payment') {
-                translatedObjectLabel = UTIL_Describe.getObjectLabel('npe01__OppPayment__c');
-            }
-            field.sObjectLabel = translatedObjectLabel;
-
+            field.name = dfr.getName();
             // TODO: pull these labels from target fields' schema based on help text mapping
             Boolean fieldHasSpacesAndObjName = dfr.getLabel().contains(' ') && dfr.getLabel().split(' ',2)[0] == field.sObjectName;
             field.label = (fieldHasSpacesAndObjName) ? dfr.getLabel().split(' ',2)[1] : dfr.getLabel();
-            field.name = dfr.getName();
 
-            String unnamespacedField = UTIL_Namespace.StrTokenRemoveNSPrefix(field.name);
-            if (conditionallyRequiredFields.contains(unnamespacedField)) {
+            field.sObjectName = BDI_DataImportService.getTargetObject(dfr.getName());
+            field.sObjectLabel = UTIL_Describe.getObjectLabel(field.sObjectName);
+
+            if (conditionallyRequiredFields.contains(field.name)) {
                 field.conditionallyRequired = true;
             }
 
-            String rawFieldType = dfr.getType().name().toLowerCase();
-            field.type = UTIL_LightningComponentSupport.getLightningDataType(rawFieldType);
-            if (rawFieldType == 'currency') {
+            String rawDataType = dfr.getType().name();
+            field.type = UTIL_LightningComponentSupport.getLightningInputDataType(rawDataType);
+            if (rawDataType == 'currency') {
                 field.formatter = 'currency';
             }
 
@@ -195,6 +183,7 @@ public with sharing class BGE_ConfigurationWizard_CTRL {
             'Account2ImportStatus__c'
         };
 
+        // TODO: move this sort to later in the process, after BGEFields have been created and we can sort by label
         List<String> sortedFieldNames = new List<String>(fieldMap.keySet());
         sortedFieldNames.sort();
 
@@ -212,16 +201,22 @@ public with sharing class BGE_ConfigurationWizard_CTRL {
             'URL'
         };
 
+        // these fields have been whitelisted since they have special handling in BDI
+        Set<String> allowedFields = new Set<String>{
+            'DonationCampaignImported__c'
+        };
+
         // looping through the fields on DataImport__c and remove unsupported data types
         for (String fieldName : sortedFieldNames) {
             DescribeFieldResult dfr = fieldMap.get(fieldName);
             String dataImportFieldApiName = UTIL_Namespace.StrTokenRemoveNSPrefix(dfr.getName());
 
             String dataImportFieldMappedObject = BDI_DataImportService.getTargetObject(dfr.getName());
-            Boolean fieldAllowed = allowedObjects.contains(dataImportFieldMappedObject)
+            Boolean fieldAllowed = (allowedObjects.contains(dataImportFieldMappedObject)
                 && allowedDataTypes.contains(dfr.getType().name())
                 && !bannedFields.contains(dataImportFieldApiName)
-                && dfr.getInlineHelpText() != null;
+                && dfr.getInlineHelpText() != null)
+                || allowedFields.contains(dataImportFieldApiName);
 
             if (fieldAllowed) {
                 dfrs.add(dfr);
@@ -233,7 +228,6 @@ public with sharing class BGE_ConfigurationWizard_CTRL {
         return dfrs;
     }
 
-
     /*******************************************************************************************************
     * @description Retrieves the default active fields for a new Batch or Template in a JSON String
     */
@@ -243,8 +237,8 @@ public with sharing class BGE_ConfigurationWizard_CTRL {
         String dataImportApiName = UTIL_Namespace.StrTokenNSPrefix('DataImport__c');
         String opportunityName = 'Opportunity';
         String opportunityLabel = UTIL_Describe.getObjectLabel(opportunityName);
-        String paymentName = 'Payment'; // bdi object name, not api name
-        String paymentLabel = UTIL_Describe.getObjectLabel('npe01__OppPayment__c');
+        String paymentName = 'npe01__OppPayment__c';
+        String paymentLabel = UTIL_Describe.getObjectLabel(paymentName);
 
         BGEField donationAmount = new BGEField();
         String donationAmountApiName = UTIL_Namespace.StrTokenNSPrefix('Donation_Amount__c');
@@ -256,7 +250,7 @@ public with sharing class BGE_ConfigurationWizard_CTRL {
         donationAmount.isActive = true;
         donationAmount.requiredInEntryForm = true;
         donationAmount.hide = false;
-        donationAmount.type = UTIL_LightningComponentSupport.getLightningDataType('number');
+        donationAmount.type = UTIL_LightningComponentSupport.getLightningInputDataType('currency');
         donationAmount.formatter = 'currency';
         donationAmount.sortOrder = 0;
         donationAmount.alwaysRequired = true;
@@ -272,7 +266,7 @@ public with sharing class BGE_ConfigurationWizard_CTRL {
         donationDate.isActive = true;
         donationDate.requiredInEntryForm = true;
         donationDate.hide = false;
-        donationDate.type = UTIL_LightningComponentSupport.getLightningDataType('date');
+        donationDate.type = UTIL_LightningComponentSupport.getLightningInputDataType('date');
         donationDate.sortOrder = 1;
         donationDate.alwaysRequired = true;
         fields.add(donationDate);
@@ -287,7 +281,7 @@ public with sharing class BGE_ConfigurationWizard_CTRL {
         paymentMethod.isActive = true;
         paymentMethod.requiredInEntryForm = false;
         paymentMethod.hide = false;
-        paymentMethod.type = UTIL_LightningComponentSupport.getLightningDataType('string');
+        paymentMethod.type = UTIL_LightningComponentSupport.getLightningInputDataType('string');
         paymentMethod.options = BGE_BatchGiftEntry_UTIL.getPicklistOptions(paymentMethodApiName);
         paymentMethod.sortOrder = 2;
         fields.add(paymentMethod);
@@ -302,7 +296,7 @@ public with sharing class BGE_ConfigurationWizard_CTRL {
         checkNumber.isActive = true;
         checkNumber.requiredInEntryForm = false;
         checkNumber.hide = false;
-        checkNumber.type = UTIL_LightningComponentSupport.getLightningDataType('string');
+        checkNumber.type = UTIL_LightningComponentSupport.getLightningInputDataType('string');
         checkNumber.sortOrder = 3;
         fields.add(checkNumber);
 
@@ -406,7 +400,7 @@ public with sharing class BGE_ConfigurationWizard_CTRL {
 
         Set<String> donationObjects = new Set<String>{
             'Opportunity',
-            'Payment'
+            'npe01__OppPayment__c'
         };
         List<DescribeFieldResult> dfrs = getRelevantFields(donationObjects);
 
